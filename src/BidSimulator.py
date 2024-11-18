@@ -11,6 +11,7 @@ class BidSimulator:
         self,
         data: pd.DataFrame = None,
         lookback_periods: int = 0,
+        # TODO: Implement a start parameter that functions the same as the end parameter
         end: int | pd.Timestamp = None,
         eff: float = 1.0,
         discharge_cost: float = 10.0,
@@ -39,7 +40,7 @@ class BidSimulator:
         self.data = data.sort_values(by="ts").reset_index()
         self.ts_idx = lookback_periods
         self.ts = data.ts.iloc[self.ts_idx]
-        self.end = end
+        self.end = len(data) if end == None else end
         self.eff = eff
         self.discharge_cost = discharge_cost
         self.capacity = capacity
@@ -92,14 +93,25 @@ class BidSimulator:
             real_time_price = self.data.rtp.iloc[self.ts_idx]
             next_soc, profit, power_bounds = self._bid(real_time_price, bid)
 
+            # step simulation timestamp
+            self.ts_idx += 1
+            self.ts = self.data.iloc[self.ts_idx].ts
+
             # determine if in terminal state
             done = False
             curr_ts = self.ts_idx if type(self.end) == int else self.ts
             if curr_ts > self.end:  # TODO: Should this be >=
                 done = True
+                return -1, -1, [0, 0], done, self.data.copy()
             self.done = done
-            return next_soc, profit, power_bounds, done
-        return 0
+            return (
+                next_soc,
+                profit,
+                power_bounds,
+                done,
+                self.data[self.data.index <= self.ts_idx].copy(),
+            )
+        return -1, -1, [0, 0], done, self.data.copy()
 
     def _bid(
         self,
@@ -115,11 +127,12 @@ class BidSimulator:
         """
         assert np.abs(power) <= self.power_max
         corrected_power = power / self.eff if power < 0 else power * self.eff
-        next_soc = (
+        next_soc = max(
             self.soc_hist[-1]
-            + (corrected_power - self.resting_draw) * self.timestep / self.capacity
+            + (corrected_power - self.resting_draw) * self.timestep / self.capacity,
+            0,
         )
-        profit = power * price
+        profit = -power * price
         power_bounds = [
             max(-next_soc * self.capacity / self.timestep, -self.power_max),
             min((1.0 - next_soc) * self.capacity / self.timestep, self.power_max),
@@ -134,6 +147,33 @@ class BidSimulator:
 
         # return parameters for the next step
         return next_soc, profit, power_bounds
+
+    def get_state(self):
+        """
+        Returns the current state of the bidder.
+
+        :return: current soc, current total profit, done, and lookback dataframe
+        """
+        return (
+            self.soc_hist[-1],
+            sum(self.profit_hist),
+            self.done,
+            self.data[self.data.index <= self.ts_idx],
+        )
+
+    def get_action(self):
+        """
+        Returns the allowable actions (power bounds) of the bidder
+
+        :return: array representing the maximum discharge and charge actions
+        """
+        return [
+            max(-self.soc_hist[-1] * self.capacity / self.timestep, -self.power_max),
+            min(
+                (1.0 - self.soc_hist[-1]) * self.capacity / self.timestep,
+                self.power_max,
+            ),
+        ]
 
     def get_summary(self):
         """
