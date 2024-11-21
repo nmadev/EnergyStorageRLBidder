@@ -144,6 +144,7 @@ class BidSimulator:
         self.action_hist.append(power)
         self.soc_hist.append(next_soc)
         self.profit_hist.append(profit)
+        self.price_hist.append(price)
 
         # return parameters for the next step
         return next_soc, profit, power_bounds
