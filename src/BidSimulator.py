@@ -133,7 +133,7 @@ class BidSimulator:
                 + (corrected_power - self.resting_draw) * self.timestep / self.capacity,
                 0,
             )
-            profit = -power * price
+            profit = -power * price * self.timestep
             power_bounds = [
                 max(-next_soc * self.capacity / self.timestep, -self.power_max),
                 min((1.0 - next_soc) * self.capacity / self.timestep, self.power_max),
@@ -149,6 +149,7 @@ class BidSimulator:
         self.action_hist.append(power)
         self.soc_hist.append(next_soc)
         self.profit_hist.append(profit)
+        self.price_hist.append(price)
 
         # return parameters for the next step
         return next_soc, profit, power_bounds
