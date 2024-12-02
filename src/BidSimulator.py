@@ -21,6 +21,8 @@ class BidSimulator:
         resting_draw: float = 0.01,
         timestep: float = 5.0 / 60,
         params: dict = None,
+        bid_acceptance_probability: float = 0.5,
+        price_volatility: float = 20.0,
     ):
         """
         Initializes a BidSimulator object.
@@ -58,6 +60,8 @@ class BidSimulator:
             "lookback_periods": lookback_periods,
             "initial_soc": initial_soc,
         }
+        self.bid_acceptance_probability = bid_acceptance_probability
+        self.price_volatility = price_volatility
 
     def __str__(self):
         self_str = f"""Bid Summary
@@ -89,18 +93,18 @@ class BidSimulator:
         :return: next state of charge, profit from the previous step (can be negative), max discharge/charge values and terminal state status
         """
         if not self.done:
-            # TODO: Add done to end state here
             real_time_price = self.data.rtp.iloc[self.ts_idx]
-            next_soc, profit, power_bounds = self._bid(real_time_price, bid)
+            price_noise = np.random.normal(0, self.price_volatility)
+            noisy_price = max(0, real_time_price + price_noise)
 
-            # step simulation timestamp
+            next_soc, profit, power_bounds = self._bid(noisy_price, bid)
+
             self.ts_idx += 1
             self.ts = self.data.iloc[self.ts_idx].ts
 
-            # determine if in terminal state
             done = False
             curr_ts = self.ts_idx if type(self.end) == int else self.ts
-            if curr_ts > self.end:  # TODO: Should this be >=
+            if curr_ts > self.end:
                 done = True
                 return -1, -1, [0, 0], done, self.data.copy()
             self.done = done
@@ -111,13 +115,9 @@ class BidSimulator:
                 done,
                 self.data[self.data.index <= self.ts_idx].copy(),
             )
-        return -1, -1, [0, 0], done, self.data.copy()
+        return -1, -1, [0, 0], self.done, self.data.copy()
 
-    def _bid(
-        self,
-        price: float = None,
-        power: float = None,
-    ):
+    def _bid(self, price: float = None, power: float = None):
         """
         Updates simulation parameters by charging/discharging at a certain capacity from a given bid.
 
@@ -126,19 +126,24 @@ class BidSimulator:
         :return: next state of charge, profit from the previous step (can be negative), and max discharge/charge values
         """
         assert np.abs(power) <= self.power_max
-        corrected_power = power / self.eff if power < 0 else power * self.eff
-        next_soc = max(
-            self.soc_hist[-1]
-            + (corrected_power - self.resting_draw) * self.timestep / self.capacity,
-            0,
-        )
-        profit = -power * price * self.timestep
-        power_bounds = [
-            max(-next_soc * self.capacity / self.timestep, -self.power_max),
-            min((1.0 - next_soc) * self.capacity / self.timestep, self.power_max),
-        ]
-        assert next_soc <= 1.0
-        assert next_soc >= 0.0
+        if np.random.random() < self.bid_acceptance_probability:
+            corrected_power = power / self.eff if power < 0 else power * self.eff
+            next_soc = max(
+                self.soc_hist[-1]
+                + (corrected_power - self.resting_draw) * self.timestep / self.capacity,
+                0,
+            )
+            profit = -power * price * self.timestep
+            power_bounds = [
+                max(-next_soc * self.capacity / self.timestep, -self.power_max),
+                min((1.0 - next_soc) * self.capacity / self.timestep, self.power_max),
+            ]
+            assert next_soc <= 1.0
+            assert next_soc >= 0.0
+        else:
+            next_soc = self.soc_hist[-1]
+            profit = 0
+            power_bounds = self.get_action()
 
         # update battery attributes
         self.action_hist.append(power)
