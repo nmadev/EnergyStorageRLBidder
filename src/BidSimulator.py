@@ -21,10 +21,8 @@ class BidSimulator:
         resting_draw: float = 0.01,
         timestep: float = 5.0 / 60,
         params: dict = None,
-        bid_acceptance_probability: float = 0.3,
-        price_volatility: float = 1.0,
-        eff_volatility: float = 0.01,
-        resting_draw_variation: float = 0.05
+        bid_acceptance_probability: float = 0.5,
+        price_volatility: float = 20.0,
     ):
         """
         Initializes a BidSimulator object.
@@ -64,8 +62,6 @@ class BidSimulator:
         }
         self.bid_acceptance_probability = bid_acceptance_probability
         self.price_volatility = price_volatility
-        self.eff_volatility = eff_volatility
-        self.resting_draw_variation = resting_draw_variation
 
     def __str__(self):
         self_str = f"""Bid Summary
@@ -131,10 +127,7 @@ class BidSimulator:
         """
         assert np.abs(power) <= self.power_max
         if np.random.random() < self.bid_acceptance_probability:
-            eff_noise = 1 + np.random.normal(0, self.eff_volatility)
-            current_eff = self.eff * eff_noise
             corrected_power = power / self.eff if power < 0 else power * self.eff
-            current_resting_draw = self.resting_draw * (1 + np.random.normal(0, self.resting_draw_variation))
             next_soc = max(
                 self.soc_hist[-1]
                 + (corrected_power - self.resting_draw) * self.timestep / self.capacity,
@@ -145,7 +138,6 @@ class BidSimulator:
                 max(-next_soc * self.capacity / self.timestep, -self.power_max),
                 min((1.0 - next_soc) * self.capacity / self.timestep, self.power_max),
             ]
-            print(power, corrected_power, self.resting_draw, self.timestep, self.capacity)
             assert next_soc <= 1.0
             assert next_soc >= 0.0
         else:
