@@ -29,8 +29,8 @@ class HonestBidder:
         :param lookback: A pandas DataFrame containing all of the historical data
         :return: a tuple containing the bid price and current SoC of the battery
         """
-        self.bid_hist.append(lookback["RTP"].iloc[-1])
-        return lookback["RTP"].iloc[-1], self.soc
+        self.bid_hist.append(lookback["rtp"].iloc[-1])
+        return lookback["rtp"].iloc[-1], self.soc
 
     def step(self, power: float = 0, profit: float = 0) -> None:
         """
