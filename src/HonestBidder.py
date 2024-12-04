@@ -30,7 +30,8 @@ class HonestBidder:
         :return: a tuple containing the bid price and current SoC of the battery
         """
         self.bid_hist.append(lookback["rtp"].iloc[-1])
-        return lookback["rtp"].iloc[-1], self.soc
+        power_bounds = self._return_bounds()
+        return lookback["rtp"].iloc[-1], power_bounds
 
     def step(self, power: float = 0, profit: float = 0) -> None:
         """
@@ -57,7 +58,7 @@ class HonestBidder:
             -(1.0 - self.soc) * self.capacity / self.timestep, -self.power_max
         )
         discharge_bounds = min(self.soc * self.capacity / self.timestep, self.power_max)
-        return (-self.power_max, self.power_max)
+        return (charge_bounds, discharge_bounds)
 
     def _clamp(value: float, min: float = 0.0, max: float = 1.0) -> float:
         """
