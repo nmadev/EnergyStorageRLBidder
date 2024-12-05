@@ -11,10 +11,11 @@ class ProbBidClearing:
         """
         Initializes a ProbBidClearing object.
 
-        :param data: Historical demand data to inform the bidding probabilities 
-        :param std: Standard deviation of normal distribution based on historical data
-        :param mean_scale: Used to shift mean around when using attitude based bidding
-        :param max_pdf: Maximum value the normal pdf can achieve with a given std
+        :param std_fit: Standard deviation of normal distribution based on historical data
+        :param max_pdf_fit: Maximum value the normal pdf can achieve with a given std
+        :param honest_mean: Mean for the honest bidder 
+        :param risky_mean: Mean for the risky bidder 
+        :param conservative_mean: Mean for the conservative bidder 
         """
         self.std_fit = 15.39
         self.max_pdf_fit = 1/np.sqrt(2*np.pi*(self.std_fit**2))
