@@ -70,3 +70,18 @@ class HonestBidder:
         :return: the clamped value
         """
         return max(min(value, max), min)
+
+    def capacity(self):
+        return self.capacity
+
+    def soc(self):
+        return self.soc
+
+    def power_max(self):
+        return self.power_max
+
+    def eff(self):
+        return self.eff
+
+    def timestep(self):
+        return self.timestep
