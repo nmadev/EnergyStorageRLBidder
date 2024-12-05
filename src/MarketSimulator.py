@@ -11,4 +11,5 @@ class MarketSimulator:
     ):
         self.data = data
 
-    def simulate(self, bidders)
+    def simulate(self, bidders: list, ):
+
