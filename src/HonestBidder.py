@@ -9,7 +9,7 @@ class HonestBidder:
         capacity: float = 8.0,
         power_max: float = 2.0,
         eff: float = 0.8,
-        timestep: float = 5.0 / 60,
+        granularity: float = 5.0 / 60,
     ):
         self.soc = initial_soc
         self.capacity = capacity
@@ -18,9 +18,8 @@ class HonestBidder:
         self.soc_hist = [initial_soc]
         self.profit_hist = [0.0]
         self.bid_hist = [0.0]
-        self.profit_hist = [0.0]
         self.action_hist = [0.0]
-        self.timestep = timestep
+        self.granularity = granularity
 
     def bid(self, lookback: pd.DataFrame) -> tuple[float, tuple[float, float]]:
         """
@@ -42,7 +41,8 @@ class HonestBidder:
         """
         power_battery = power * self.eff if power < 0 else power / self.eff
         next_soc = self._clamp(
-            (self.soc * self.capacity + power_battery * self.timestep) / self.capacity
+            (self.soc * self.capacity + power_battery * self.granularity)
+            / self.capacity
         )
         self.soc_hist.append(next_soc)
         self.action_hist.append(power)
@@ -55,9 +55,11 @@ class HonestBidder:
         :return: a tuple containing the maximum charge and discharge power values
         """
         charge_bounds = max(
-            -(1.0 - self.soc) * self.capacity / self.timestep, -self.power_max
+            -(1.0 - self.soc) * self.capacity / self.granularity, -self.power_max
         )
-        discharge_bounds = min(self.soc * self.capacity / self.timestep, self.power_max)
+        discharge_bounds = min(
+            self.soc * self.capacity / self.granularity, self.power_max
+        )
         return (charge_bounds, discharge_bounds)
 
     def _clamp(value: float, min: float = 0.0, max: float = 1.0) -> float:
@@ -70,18 +72,3 @@ class HonestBidder:
         :return: the clamped value
         """
         return max(min(value, max), min)
-
-    def capacity(self):
-        return self.capacity
-
-    def soc(self):
-        return self.soc
-
-    def power_max(self):
-        return self.power_max
-
-    def eff(self):
-        return self.eff
-
-    def timestep(self):
-        return self.timestep
