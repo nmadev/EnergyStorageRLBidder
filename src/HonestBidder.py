@@ -70,6 +70,7 @@ class HonestBidder:
         :return: the clamped value
         """
         return max(min(value, max), min)
+<<<<<<< HEAD
 
     def capacity(self):
         return self.capacity
@@ -85,3 +86,5 @@ class HonestBidder:
 
     def timestep(self):
         return self.timestep
+=======
+>>>>>>> 5774fa3aee8ae00d92a213b8debbd7359001ce1b
