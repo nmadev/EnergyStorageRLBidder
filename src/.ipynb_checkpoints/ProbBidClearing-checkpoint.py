@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 import matplotlib.pyplot as plt
+pd.options.mode.chained_assignment = None  
 
 class ProbBidClearing:
     """
@@ -138,10 +139,114 @@ class ProbBidClearing:
         plt.tight_layout()
         plt.show()
          
-         
-    # TO DO: def timevarying_norm_prob_clear(rtp, bid, attitude, SOC, TOD):
-    # :param TOD: current TOD. Used to introduce a time-varying aspect to the bid acceptance prob based on known demand patterns
+    def avg_demand_profile(self, STORAGE_DF, win):
+        """
+        Calculates the average and smoothed daily demand profile based on moving-average window
+    
+        :param STORAGE_DF: raw dataset from CAISO bids
+        :param window: window size for rolling moving average
+        :return avg_profile_rolling: smoothed demand profile
+        """
+        # Isolate demand data
+        demand_data = STORAGE_DF[['tot_energy_rtpd']]
+        
+        # Extract time of day
+        demand_data['time_of_day'] = demand_data.index.time
+        
+        # Compute average demand for each 5-minute interval
+        avg_profile = demand_data.groupby('time_of_day')['tot_energy_rtpd'].mean()
+        
+        # Convert index to string for plotting 
+        avg_profile.index = avg_profile.index.map(lambda x: x.strftime('%H:%M'))
+        
+        # Get last few values
+        last_values = avg_profile[-(win-1):]
+        
+        # Prepend last values to array to get wraparound series
+        avg_profile_ext = pd.concat([last_values, avg_profile])
 
+        # Compute rolling average
+        avg_profile_ext_rolling = avg_profile_ext.rolling(window=win).mean()
+        
+        # Drop first few values (are NaN before window kicks in)
+        avg_profile_rolling = avg_profile_ext_rolling[(win-1):]
+
+        return avg_profile_rolling
+
+
+    def visualize_avg_demand_profile(self, avg_profile_rolling):
+        # Calculate the mean
+        mean_value = 0 #avg_profile_rolling.mean()
+        
+        # Create the figure
+        plt.figure(figsize=(10, 6))
+        mean_line = plt.axhline(y=mean_value, color='r', linestyle='--', label=f'Mean: {mean_value:.2f}')
+        demand, = plt.plot(avg_profile_rolling.index, avg_profile_rolling.values)
+        fill_red = plt.fill_between(avg_profile_rolling.index, avg_profile_rolling.values, mean_value, where=(avg_profile_rolling.values < mean_value), color='red', alpha=0.3)
+        fill_green = plt.fill_between(avg_profile_rolling.index, avg_profile_rolling.values, mean_value, where=(avg_profile_rolling.values > mean_value), color='green', alpha=0.3)
+        
+        plt.title('Average Smoothed Daily Demand Profile')
+        plt.xlabel('Time of Day')
+        plt.ylabel('Average Total Energy')
+        tick_positions = avg_profile_rolling.index[::12]  # Select every hour entry for the ticks
+        plt.xticks(tick_positions, rotation=45)
+        plt.xlim("00:00", "23:45")
+        plt.grid(True)
+        plt.tight_layout()
+        plt.legend([demand, fill_red, fill_green], 
+                   ['Demand', 'Charge', 'Discharge'],
+                   loc='upper left')
+        plt.show()
+
+    
+    def timevarying_norm_prob_clear(self, rtp, bid, attitude, SOC, ts, demand):
+        """
+        Calculates the probability of a bid being cleared in the electricity market. 
+        Based on the training attitude and deviation from real time price (RTP)
+    
+        :param rtp: current price of electricity ($/MW)
+        :param bid: bid submitted to the electricity market ($/MW)
+        :param attitude: strategy type employed by the bidder
+            'honest': pdf centered around zero deviation from the RTP
+            'risky': pdf centered around +std deviation from the RTP (bid high prices)
+            'conservative': pdf centered around -std deviation from the RTP (bid low prices)
+        :param SOC: current battery state of charge 
+        :param ts: extract TOD from ts for time-varying bid acceptance prob based on known demand patterns
+        :param demand: average smoothed daily regional demand profile
+        :return: [-1, 0, 1] representing if the bid is accepted to charge, hold, or discharge
+        """
+
+        # extract time of day from ts
+        TOD = ts.strftime('%H:%M')
+        # extract demand value 
+        d = demand.loc[TOD]
+        # extract mean from attitude
+        mean = self.attitudes[attitude]
+
+        # Calculate delta in bid from RTP
+        x = rtp - bid
+        
+        # Compute the PDF, which will act as a threshold for bid acceptance 
+        th = norm.pdf(x, loc=mean, scale=self.std_fit)
+
+        # Draw sample value from uniform distribution ranging over possible pdf values
+        s = np.random.uniform(0,self.max_pdf_fit,1)
+
+        # If the sample is below the threshold, then the bid is accepted 
+        if s[0] < th: 
+            # Determine if charge or discharging 
+            if d > 0 and SOC != 0:
+                # Accepted bid, demand > 0 and battery is not empty, discharge
+                return 1
+            elif d < 0 and SOC != 1:
+                # Accepted bid, demand < 0 and battery is not full, charge
+                return -1
+            else:
+                # Our bid was accepted but physical constraints prevent action 
+                return 0
+        else: 
+            # Bid was not accepted
+            return 0
 
 
 
