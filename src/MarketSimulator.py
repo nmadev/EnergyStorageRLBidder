@@ -8,9 +8,13 @@ class MarketSimulator:
     def __init__(
         self,
         data: pd.DataFrame = None,
+        granularity: float = 5.0 / 60,
     ):
         self.data = data
         self.clearing_prices = []
+        self.available_capacity = []
+        self.demand = []
+        self.granularity = granularity
 
     def simulate(
         self,
@@ -31,7 +35,7 @@ class MarketSimulator:
         :param prop_honest: the proportion of honest bidders in the market
         """
         # copy data for simulation
-        self.sim_data = self.data.copy().reset_index(drop=True)
+        self.sim_data = self.data.copy().reset_index(drop=True).sort_values(by="ts")
 
         # determine storage capacity and power capacities
         total_storage = sum([bidder.capacity for bidder in bidders])
@@ -51,7 +55,6 @@ class MarketSimulator:
             lookback = self.sim_data.iloc[:row_idx]
             demand = lookback.scaled_demand.iloc[-1]
             rtp = lookback.rtp.iloc[-1]
-            dap = lookback.dap.iloc[-1]
 
             bids = []
             for bidder in bidders:
@@ -68,7 +71,7 @@ class MarketSimulator:
             if max_steps > 0 and step_value >= max_steps:
                 break
 
-    def _transform_bid(self, bid, eff) -> tuple[float, float]:
+    def _transform_bid(self, bid, eff):
         return (bid * eff, bid / eff)
 
     def _clear_market(
@@ -90,58 +93,54 @@ class MarketSimulator:
         :return: a tuple containing the total profit and total power cleared in the market
         """
 
-        # no clearing if no demand
-        base_bids = [(0, 0)] * len(bidders)
-        if demand == 0:
-            return base_bids
+        # check charge (-) or discharge (+)
+        sign = abs(demand) / demand if demand != 0 else 1
+        sign_idx = 0 if sign < 0 else 1
 
         effs = np.array([bidder.eff for bidder in bidders])
         bid_values = np.array([bid[0] for bid in bids])
-        bid_powers = np.array([bid[1] for bid in bids])
+        bid_powers = np.array([bid[1][sign_idx] for bid in bids])
         zipped_bids = list(
             zip(
-                self._transform_bid(bid_values, effs),
+                self._transform_bid(bid_values, effs)[sign_idx],
                 bid_powers,
                 effs,
                 range(len(bidders)),
             )
         )
-
-        # check charge or discharge
-        sign = abs(demand) / demand
-
-        # sort bids on value
-        if sign < 0:
-            # sort bids in descending order
-            zipped_bids = sorted(zipped_bids, key=lambda x: x[0][0], reverse=True)
-        else:
-            # sort bids in ascending order
-            zipped_bids = sorted(zipped_bids, key=lambda x: x[0][1])
-
+        zipped_bids = sorted(zipped_bids, key=lambda x: x[0] * sign)
         # determine clearing price
         cleared_bids = []
         cleared_demand = 0
-        clearing_price = np.nan
+        available_power = sum([power_bound for _, power_bound, _, _ in zipped_bids])
+        clearing_price = 0
+        self.demand.append(demand)
+        self.available_capacity.append(available_power)
 
-        for bid_bounds, power_bounds, effs, idx in zipped_bids:
-            available_power = (power_bounds[1] if sign > 0 else power_bounds[0]) * sign
-            cleared_power = min((demand - cleared_demand) * sign, available_power)
-            cleared_demand += cleared_power * sign
-            cleared_bids.append((cleared_power, 0))
+        # no clearing if no demand
+        base_bids = [(0, 0)] * len(bidders)
+        if demand == 0:
+            self.clearing_prices.append(rtp)
+            return base_bids
 
-            if cleared_demand == demand and clearing_price != np.nan:
-                clearing_price = bid_bounds[0] if sign > 0 else bid_bounds[1]
-
-            if cleared_demand >= demand:
+        for bid_bound, power_bound, effs, idx in zipped_bids:
+            cleared_power = (
+                max(0, min(abs(demand) - abs(cleared_demand), abs(power_bound))) * sign
+            )
+            if abs(cleared_demand) <= abs(demand):
+                clearing_price = bid_bound
+                cleared_bids.append((cleared_power, 0))
+            else:
                 cleared_bids.append((0, 0))
+
+            cleared_demand += cleared_power
 
         for i, (bid_bounds, power_bounds, effs, idx) in enumerate(zipped_bids):
             base_bids[idx] = (
-                cleared_bids[i][0] * sign,
-                cleared_bids[i][0] * sign * clearing_price,
+                cleared_bids[i][0],
+                cleared_bids[i][0] * sign * clearing_price * self.granularity,
             )
-
-        print(demand, clearing_price)
+        self.clearing_prices.append(clearing_price)
 
         # sort back to original order
         return base_bids

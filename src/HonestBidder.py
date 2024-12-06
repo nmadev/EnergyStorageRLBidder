@@ -10,6 +10,7 @@ class HonestBidder:
         power_max: float = 2.0,
         eff: float = 0.8,
         granularity: float = 5.0 / 60,
+        noise: tuple[float, float] = (0.0, 0.0),
     ):
         self.initial_soc = initial_soc
         self.soc = self.initial_soc
@@ -21,6 +22,7 @@ class HonestBidder:
         self.bid_hist = [0.0]
         self.action_hist = [0.0]
         self.granularity = granularity
+        self.noise = noise
 
     def reset(self) -> None:
         """
@@ -39,9 +41,12 @@ class HonestBidder:
         :param lookback: A pandas DataFrame containing all of the historical data
         :return: a tuple containing the bid price and current SoC of the battery
         """
-        self.bid_hist.append(lookback["rtp"].iloc[-1])
+        noisy_bid = lookback.rtp.iloc[-1] + np.random.normal(
+            loc=self.noise[0], scale=self.noise[1]
+        )
+        self.bid_hist.append(noisy_bid)
         power_bounds = self._return_bounds()
-        return lookback["rtp"].iloc[-1], power_bounds
+        return noisy_bid, power_bounds
 
     def step(self, power: float = 0, profit: float = 0) -> None:
         """
@@ -52,10 +57,12 @@ class HonestBidder:
         """
         power_battery = power * self.eff if power < 0 else power / self.eff
         next_soc = (
-            self.soc * self.capacity + power_battery * self.granularity
+            self.soc * self.capacity - power_battery * self.granularity
         ) / self.capacity
+        # TODO: Check this... it shouldn't be necessary to clamp the SoC
         next_soc = self._clamp(value=next_soc)
         self.soc_hist.append(next_soc)
+        self.soc = next_soc
         self.action_hist.append(power)
         self.profit_hist.append(profit)
 
