@@ -48,7 +48,6 @@ class DQNAgent:
         self.soc_hist = [initial_soc]
         self.profit_hist = [0.0]
         self.bid_hist = [0.0]
-        self.profit_hist = [0.0]
         self.action_hist = [0.0]
         self.granularity = granularity
 
@@ -70,7 +69,7 @@ class DQNAgent:
 
         power_battery = power * self.eff if power < 0 else power / self.eff
         next_soc = self._clamp(
-            (soc * self.capacity + power_battery * self.granularity) / self.capacity
+            (soc * self.capacity - power_battery * self.granularity) / self.capacity
         )
 
         self.soc_hist.append(next_soc)
@@ -130,15 +129,16 @@ class DQNAgent:
                 else:
                     bid, power_bounds, action_index = self.bid(self.data.iloc[:i])
 
-                # Reward Calculation
                 prob_cleared = self.prob_clear(rtp, bid, self.attitude, soc)
-                reward = prob_cleared * bid
 
                 power = 0
                 if prob_cleared == 1:
                     power = self._return_bounds()[1]
                 elif prob_cleared == -1:
                     power = self._return_bounds()[0]
+
+                # Reward Calculation
+                reward = power * rtp * self.granularity
 
                 next_state = self.step(power, reward, self.data.iloc[:i])
 
