@@ -221,6 +221,9 @@ class ProbBidClearing:
                    loc='upper left')
         plt.show()
 
+
+    def get_demand_profile(self):
+        return self.avg_profile_rolling 
     
     def timevarying_norm_prob_clear(self, rtp, bid, attitude, SOC, ts):
         """
@@ -239,13 +242,25 @@ class ProbBidClearing:
         :return: [-1, 0, 1] representing if the bid is accepted to charge, hold, or discharge
         """
         demand = self.avg_profile_rolling
+        min_val = min(demand)
+        max_val = max(demand)
+        # center normalize demand around 1 from [0.5, 1.5]
+        demand_norm = (demand - min_val)/(max_val - min_val) + 0.5
 
         # extract time of day from ts
         TOD = ts.strftime('%H:%M')
         # extract demand value 
         d = demand.loc[TOD]
-        # extract mean from attitude
-        mean = self.attitudes[attitude]
+        d_norm = demand_norm.loc[TOD]
+        scale = 3
+        
+        # extract mean from attitude and demand pattern 
+        if d < 0: 
+            # charge 
+            mean = scale*(1/d_norm)*(1 + self.attitudes[attitude])
+        else:
+            # discharge
+            mean = scale*d_norm*(1 + self.attitudes[attitude])
 
         # Calculate delta in bid from RTP
         x = rtp - bid
