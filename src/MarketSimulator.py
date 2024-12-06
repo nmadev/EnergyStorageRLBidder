@@ -14,6 +14,7 @@ class MarketSimulator:
         self.clearing_prices = []
         self.available_capacity = []
         self.demand = []
+        self.rtp = []
         self.granularity = granularity
 
     def simulate(
@@ -116,6 +117,7 @@ class MarketSimulator:
         clearing_price = 0
         self.demand.append(demand)
         self.available_capacity.append(available_power)
+        self.rtp.append(rtp)
 
         # no clearing if no demand
         base_bids = [(0, 0)] * len(bidders)

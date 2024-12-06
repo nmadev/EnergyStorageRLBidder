@@ -59,7 +59,6 @@ class HonestBidder:
         next_soc = (
             self.soc * self.capacity - power_battery * self.granularity
         ) / self.capacity
-        # TODO: Check this... it shouldn't be necessary to clamp the SoC
         next_soc = self._clamp(value=next_soc)
         self.soc_hist.append(next_soc)
         self.soc = next_soc
@@ -73,10 +72,11 @@ class HonestBidder:
         :return: a tuple containing the maximum charge and discharge power values
         """
         charge_bounds = max(
-            -(1.0 - self.soc) * self.capacity / self.granularity, -self.power_max
+            -(1.0 - self.soc) * self.capacity / self.granularity / self.eff,
+            -self.power_max,
         )
         discharge_bounds = min(
-            self.soc * self.capacity / self.granularity, self.power_max
+            self.soc * self.capacity / self.granularity * self.eff, self.power_max
         )
         return (charge_bounds, discharge_bounds)
 
