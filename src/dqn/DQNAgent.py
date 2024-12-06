@@ -49,6 +49,7 @@ class DQNAgent:
         self.profit_hist = [0.0]
         self.bid_hist = [0.0]
         self.action_hist = [0.0]
+        self.power_hist = []
         self.granularity = granularity
 
     def step(self, power, profit, lookback):
@@ -136,6 +137,8 @@ class DQNAgent:
                     power = self._return_bounds()[1]
                 elif prob_cleared == -1:
                     power = self._return_bounds()[0]
+
+                self.power_hist.append(power)
 
                 # Reward Calculation
                 reward = power * rtp * self.granularity
