@@ -9,15 +9,21 @@ class ProbBidClearing:
     This class contains an object to help train an energy market bidder by simulating the probability of bids being accepted.
     """
 
-    def __init__(self, std, risky_mean, conservative_mean):
+    def __init__(
+        self, 
+        std = 10, 
+        risky_mean = 20, 
+        conservative_mean = -15,
+        window = 10
+    ):
         """
         Initializes a ProbBidClearing object.
 
-        :param std_fit: Standard deviation of normal distribution based on historical data
-        :param max_pdf_fit: Maximum value the normal pdf can achieve with a given std
+        :param std: Standard deviation of normal distribution based on historical data
         :param honest_mean: Mean for the honest bidder (kept constant at 0)
         :param risky_mean: Mean for the risky bidder 
         :param conservative_mean: Mean for the conservative bidder 
+        :param win: Window size used to compute the roller average demand profile
         """
         
         ## Standard Deviation
@@ -30,6 +36,20 @@ class ProbBidClearing:
             "risky": risky_mean,
             "conservative": conservative_mean
         }
+
+        ## Compute Demand Profile
+        self.win = window
+        
+        # Pull dataset
+        self.ENERGY_STORAGE_DATA_PATH = (
+            "./src/CAISO-EnergyStorage/src/data/ES_BIDS/CAISO_ES_BIDS.parquet"
+        )
+        
+        # Read parquet file
+        self.STORAGE_DF = pd.read_parquet(self.ENERGY_STORAGE_DATA_PATH)
+
+        # Calculate smoothed profile
+        self.avg_profile_rolling = self.avg_demand_profile(self.STORAGE_DF, self.win)
 
  
     def norm_prob_clear(self, rtp, bid, attitude, SOC):
@@ -149,7 +169,7 @@ class ProbBidClearing:
         """
         # Isolate demand data
         demand_data = STORAGE_DF[['tot_energy_rtpd']]
-        ß
+        
         # Extract time of day
         demand_data['time_of_day'] = demand_data.index.time
         
@@ -174,7 +194,10 @@ class ProbBidClearing:
         return avg_profile_rolling
 
 
-    def visualize_avg_demand_profile(self, avg_profile_rolling):
+    def visualize_avg_demand_profile(self):
+
+        avg_profile_rolling = self.avg_profile_rolling
+        
         # Calculate the mean
         mean_value = 0 #avg_profile_rolling.mean()
         
@@ -199,7 +222,7 @@ class ProbBidClearing:
         plt.show()
 
     
-    def timevarying_norm_prob_clear(self, rtp, bid, attitude, SOC, ts, demand):
+    def timevarying_norm_prob_clear(self, rtp, bid, attitude, SOC, ts):
         """
         Calculates the probability of a bid being cleared in the electricity market. 
         Based on the training attitude and deviation from real time price (RTP)
@@ -215,6 +238,7 @@ class ProbBidClearing:
         :param demand: average smoothed daily regional demand profile
         :return: [-1, 0, 1] representing if the bid is accepted to charge, hold, or discharge
         """
+        demand = self.avg_profile_rolling
 
         # extract time of day from ts
         TOD = ts.strftime('%H:%M')
