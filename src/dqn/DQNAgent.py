@@ -50,6 +50,7 @@ class DQNAgent:
         self.bid_hist = [0.0]
         self.action_hist = [0.0]
         self.power_hist = []
+        self.rtp_hist = []
         self.granularity = granularity
 
     def step(self, power, profit, lookback):
@@ -61,8 +62,16 @@ class DQNAgent:
         soc = self.soc_hist[-1]
         timestamp = lookback['ts'].iloc[-1]
 
+        if not pd.api.types.is_datetime64_any_dtype(self.data['ts']):
+            self.data['ts'] = pd.to_datetime(self.data['ts'])
+
         # Find the next timestamp in the dataset
-        next_index = (self.data['ts'] > timestamp).idxmin()
+        valid_indices = self.data[self.data['ts'] > timestamp].index
+
+        if len(valid_indices) > 0:
+            next_index = valid_indices[0]  # Get the first valid index
+        else:
+            next_index = len(self.data) - 1  # If no future timestamps, stay at the end
 
         next_rtp = self.data.loc[next_index, 'rtp']
         next_dap = self.data.loc[next_index, 'dap']
@@ -139,6 +148,7 @@ class DQNAgent:
                     power = self._return_bounds()[0]
 
                 self.power_hist.append(power)
+                self.rtp_hist.append(rtp)
 
                 # Reward Calculation
                 reward = power * rtp * self.granularity
