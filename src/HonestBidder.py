@@ -11,15 +11,26 @@ class HonestBidder:
         eff: float = 0.8,
         granularity: float = 5.0 / 60,
     ):
-        self.soc = initial_soc
+        self.initial_soc = initial_soc
+        self.soc = self.initial_soc
         self.capacity = capacity
         self.power_max = power_max
         self.eff = eff
-        self.soc_hist = [initial_soc]
+        self.soc_hist = [self.initial_soc]
         self.profit_hist = [0.0]
         self.bid_hist = [0.0]
         self.action_hist = [0.0]
         self.granularity = granularity
+
+    def reset(self) -> None:
+        """
+        Resets the state of the battery
+        """
+        self.soc = self.initial_soc
+        self.soc_hist = [self.initial_soc]
+        self.profit_hist = [0.0]
+        self.bid_hist = [0.0]
+        self.action_hist = [0.0]
 
     def bid(self, lookback: pd.DataFrame) -> tuple[float, tuple[float, float]]:
         """
@@ -40,10 +51,10 @@ class HonestBidder:
         :param profit: the profit from the previous step
         """
         power_battery = power * self.eff if power < 0 else power / self.eff
-        next_soc = self._clamp(
-            (self.soc * self.capacity + power_battery * self.granularity)
-            / self.capacity
-        )
+        next_soc = (
+            self.soc * self.capacity + power_battery * self.granularity
+        ) / self.capacity
+        next_soc = self._clamp(value=next_soc)
         self.soc_hist.append(next_soc)
         self.action_hist.append(power)
         self.profit_hist.append(profit)
@@ -62,13 +73,13 @@ class HonestBidder:
         )
         return (charge_bounds, discharge_bounds)
 
-    def _clamp(value: float, min: float = 0.0, max: float = 1.0) -> float:
+    def _clamp(self, value: float, min_val: float = 0.0, max_val: float = 1.0) -> float:
         """
         Clamps a value between two bounds.
 
         :param value: the value to be clamped
-        :param min: the minimum value
-        :param max: the maximum value
+        :param min_val: the minimum value
+        :param max_val: the maximum value
         :return: the clamped value
         """
-        return max(min(value, max), min)
+        return max(min(value, max_val), min_val)
