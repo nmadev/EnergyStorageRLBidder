@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import pandas as pd
+from datetime import datetime
 
 
 class DQNAgent:
@@ -52,8 +53,22 @@ class DQNAgent:
         self.power_hist = []
         self.rtp_hist = []
         self.granularity = granularity
+        self.sim_profit = 0
 
-    def step(self, power, profit, lookback):
+    def step(self, power, profit):
+        # update soc
+        soc = self.soc_hist[-1]
+        power_battery = power * self.eff if power < 0 else power / self.eff
+
+        next_soc = self._clamp(
+            (soc * self.capacity - power_battery * self.granularity) / self.capacity
+        )
+
+        self.soc_hist.append(next_soc)
+        # update overall profit
+        self.sim_profit += profit
+
+    def train_step(self, power, profit, lookback):
         """
         Step function to simulate the environment dynamics.
 
@@ -132,14 +147,14 @@ class DQNAgent:
                 rtp, dap, soc, ts = state
 
                 # Epsilon-Greedy Action Selection
-                if np.random.rand() < max(0.01, 0.9999 ** episode):
+                if np.random.rand() < max(0.01, 0.9 ** ((episode + 1) * 10)):
                     action_index = np.random.choice(len(self.action_space))
                     action = self.action_space[action_index]
                     bid = rtp * action
                 else:
                     bid, power_bounds, action_index = self.bid(self.data.iloc[:i])
 
-                prob_cleared = self.prob_clear(rtp, bid, self.attitude, soc)
+                prob_cleared = self.prob_clear(rtp, bid, self.attitude, soc, datetime.fromtimestamp(ts))
 
                 power = 0
                 if prob_cleared == 1:
@@ -153,7 +168,7 @@ class DQNAgent:
                 # Reward Calculation
                 reward = power * rtp * self.granularity
 
-                next_state = self.step(power, reward, self.data.iloc[:i])
+                next_state = self.train_step(power, reward, self.data.iloc[:i])
 
                 # Append Experience to Buffer
                 buffer.append((state, action_index, reward, next_state))
@@ -167,7 +182,7 @@ class DQNAgent:
                     targets = [r + gamma * max_next_q for r, max_next_q in
                                zip(rewards, max_next_q_values)]
 
-                    self.train_step(states, actions, targets)
+                    self.nn_train_step(states, actions, targets)
 
                 # Update Target Network
                 if totalstep % tau == 0:
@@ -178,8 +193,7 @@ class DQNAgent:
                 state = next_state
 
             rrecord.append(rsum)
-            if episode % 10 == 0:
-                print(f'Episode {episode}, Average Return: {np.mean(rrecord[-10:])}')
+            print(f'Episode {episode}, Average Return: {rsum}')
 
     def compute_argmaxQ(self, state):
         """
@@ -197,7 +211,7 @@ class DQNAgent:
         Qvalues = self.model(states).detach().numpy()
         return np.max(Qvalues, axis=1)
 
-    def train_step(self, states, actions, targets):
+    def nn_train_step(self, states, actions, targets):
         """
         Train the agent on a given batch of states, actions, and targets.
 
