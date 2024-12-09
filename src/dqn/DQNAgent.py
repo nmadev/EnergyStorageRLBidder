@@ -5,6 +5,10 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 
+# 1. maybe increase the size of NN
+# 2. learning rate
+# 3. buffer size
+
 
 class DQNAgent:
     def __init__(self,
@@ -22,9 +26,9 @@ class DQNAgent:
         :param lr: Learning rate for optimizer
         :param prob_clear: Function to calculate bid acceptance probability
         :param attitude: attitude of the agent
-        :param data: Loaded data containing fields rtp, dap, timestamp
+        :param data: Loaded data containing fields rtp, timestamp
         """
-        self.obssize = 4  # observation size (RTP, DAP, SOC, Timestamp)
+        self.obssize = 3  # observation size (RTP, SOC, Timestamp)
         self.action_space = np.arange(0.0, 2.1, 0.1)
         self.actsize = len(self.action_space)
 
@@ -89,7 +93,6 @@ class DQNAgent:
             next_index = len(self.data) - 1  # If no future timestamps, stay at the end
 
         next_rtp = self.data.loc[next_index, 'rtp']
-        next_dap = self.data.loc[next_index, 'dap']
         next_timestamp = self.data.loc[next_index, 'ts'].timestamp()
 
         power_battery = power * self.eff if power < 0 else power / self.eff
@@ -102,18 +105,17 @@ class DQNAgent:
         self.profit_hist.append(profit)
 
         # Construct next state
-        next_state = np.array([next_rtp, next_dap, next_soc, float(next_timestamp)])
+        next_state = np.array([next_rtp, next_soc, float(next_timestamp)])
 
         return next_state
 
     def bid(self, lookback: pd.DataFrame):
         # Convert the necessary columns to numeric values
         rtp = lookback["rtp"].iloc[-1]
-        dap = lookback["dap"].iloc[-1]
         ts = lookback["ts"].iloc[-1].timestamp()  # Convert to Unix timestamp
 
         # Construct the state with numeric values only
-        state = np.array([float(rtp), float(dap), float(self.soc_hist[-1]), float(ts)])
+        state = np.array([float(rtp), float(self.soc_hist[-1]), float(ts)])
 
         action_index = self.compute_argmaxQ(state)
         action = self.action_space[action_index]
@@ -138,13 +140,12 @@ class DQNAgent:
             # Initialize state from data
             initial_index = 0  # Start from the beginning of the dataset
             state = np.array([self.data.loc[initial_index, 'rtp'],
-                              self.data.loc[initial_index, 'dap'],
                               0.5,  # Initial SOC
                               float(self.data.loc[initial_index, 'ts'].timestamp())])
             rsum = 0
             for i in range(20, len(self.data)):
                 # Step Function
-                rtp, dap, soc, ts = state
+                rtp, soc, ts = state
 
                 # Epsilon-Greedy Action Selection
                 if np.random.rand() < max(0.01, 0.9 ** ((episode + 1) * 10)):
@@ -159,8 +160,10 @@ class DQNAgent:
                 power = 0
                 if prob_cleared == 1:
                     power = self._return_bounds()[1]
+                    rtp = rtp / self.eff
                 elif prob_cleared == -1:
                     power = self._return_bounds()[0]
+                    rtp = rtp * self.eff
 
                 self.power_hist.append(power)
                 self.rtp_hist.append(rtp)
@@ -193,7 +196,7 @@ class DQNAgent:
                 state = next_state
 
             rrecord.append(rsum)
-            print(f'Episode {episode}, Average Return: {rsum}')
+            print(f'Episode {episode}, Overall Reward: {rsum}')
 
     def compute_argmaxQ(self, state):
         """
@@ -207,7 +210,10 @@ class DQNAgent:
         """
         Compute max Q-values for a batch of states.
         """
-        states = torch.FloatTensor(states)
+        if not isinstance(states, np.ndarray):
+            states = np.array(states, dtype=np.float32)
+
+        states = torch.from_numpy(states)
         Qvalues = self.model(states).detach().numpy()
         return np.max(Qvalues, axis=1)
 
@@ -258,3 +264,12 @@ class DQNAgent:
         :return: the clamped value
         """
         return max(min(value, max_val), min_val)
+
+    def _reset_sim(self):
+        self.soc_hist = [self.soc_hist[0]]
+        self.profit_hist = []
+        self.bid_hist = []
+        self.action_hist = []
+        self.power_hist = []
+        self.rtp_hist = []
+        self.sim_profit = 0
