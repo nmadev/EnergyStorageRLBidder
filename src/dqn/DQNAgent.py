@@ -11,16 +11,18 @@ from datetime import datetime
 
 
 class DQNAgent:
-    def __init__(self,
-                 lr,
-                 prob_clear,
-                 attitude,
-                 data,
-                 initial_soc: float = 0.5,
-                 capacity: float = 8.0,
-                 power_max: float = 2.0,
-                 eff: float = 0.8,
-                 granularity: float = 5.0 / 60):
+    def __init__(
+        self,
+        lr,
+        prob_clear,
+        attitude,
+        data,
+        initial_soc: float = 0.5,
+        capacity: float = 8.0,
+        power_max: float = 2.0,
+        eff: float = 0.8,
+        granularity: float = 5.0 / 60,
+    ):
         """
         DQN Agent initialization.
         :param lr: Learning rate for optimizer
@@ -38,7 +40,7 @@ class DQNAgent:
             nn.ReLU(),
             nn.Linear(64, 64),
             nn.ReLU(),
-            nn.Linear(64, self.actsize)
+            nn.Linear(64, self.actsize),
         )
 
         # Optimizer Definition
@@ -69,6 +71,8 @@ class DQNAgent:
         )
 
         self.soc_hist.append(next_soc)
+        self.action_hist.append(power)
+        self.profit_hist.append(profit)
         # update overall profit
         self.sim_profit += profit
 
@@ -79,21 +83,21 @@ class DQNAgent:
         :return: next_state
         """
         soc = self.soc_hist[-1]
-        timestamp = lookback['ts'].iloc[-1]
+        timestamp = lookback["ts"].iloc[-1]
 
-        if not pd.api.types.is_datetime64_any_dtype(self.data['ts']):
-            self.data['ts'] = pd.to_datetime(self.data['ts'])
+        if not pd.api.types.is_datetime64_any_dtype(self.data["ts"]):
+            self.data["ts"] = pd.to_datetime(self.data["ts"])
 
         # Find the next timestamp in the dataset
-        valid_indices = self.data[self.data['ts'] > timestamp].index
+        valid_indices = self.data[self.data["ts"] > timestamp].index
 
         if len(valid_indices) > 0:
             next_index = valid_indices[0]  # Get the first valid index
         else:
             next_index = len(self.data) - 1  # If no future timestamps, stay at the end
 
-        next_rtp = self.data.loc[next_index, 'rtp']
-        next_timestamp = self.data.loc[next_index, 'ts'].timestamp()
+        next_rtp = self.data.loc[next_index, "rtp"]
+        next_timestamp = self.data.loc[next_index, "ts"].timestamp()
 
         power_battery = power * self.eff if power < 0 else power / self.eff
         next_soc = self._clamp(
@@ -139,9 +143,13 @@ class DQNAgent:
         for episode in range(episodes):
             # Initialize state from data
             initial_index = 0  # Start from the beginning of the dataset
-            state = np.array([self.data.loc[initial_index, 'rtp'],
-                              0.5,  # Initial SOC
-                              float(self.data.loc[initial_index, 'ts'].timestamp())])
+            state = np.array(
+                [
+                    self.data.loc[initial_index, "rtp"],
+                    0.5,  # Initial SOC
+                    float(self.data.loc[initial_index, "ts"].timestamp()),
+                ]
+            )
             rsum = 0
             for i in range(20, len(self.data)):
                 # Step Function
@@ -155,7 +163,9 @@ class DQNAgent:
                 else:
                     bid, power_bounds, action_index = self.bid(self.data.iloc[:i])
 
-                prob_cleared = self.prob_clear(rtp, bid, self.attitude, soc, datetime.fromtimestamp(ts))
+                prob_cleared = self.prob_clear(
+                    rtp, bid, self.attitude, soc, datetime.fromtimestamp(ts)
+                )
 
                 power = 0
                 if prob_cleared == 1:
@@ -182,8 +192,10 @@ class DQNAgent:
                     states, actions, rewards, next_states = zip(*minibatch)
 
                     max_next_q_values = self.compute_maxQvalues(next_states)
-                    targets = [r + gamma * max_next_q for r, max_next_q in
-                               zip(rewards, max_next_q_values)]
+                    targets = [
+                        r + gamma * max_next_q
+                        for r, max_next_q in zip(rewards, max_next_q_values)
+                    ]
 
                     self.nn_train_step(states, actions, targets)
 
@@ -196,7 +208,7 @@ class DQNAgent:
                 state = next_state
 
             rrecord.append(rsum)
-            print(f'Episode {episode}, Overall Reward: {rsum}')
+            print(f"Episode {episode}, Overall Reward: {rsum}")
 
     def compute_argmaxQ(self, state):
         """
