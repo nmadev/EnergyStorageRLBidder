@@ -12,7 +12,7 @@ class ProbBidClearing:
     def __init__(
         self, 
         std = 10, 
-        risky_mean = 20, 
+        risky_mean = 15, 
         conservative_mean = -15,
         window = 10
     ):
@@ -251,6 +251,63 @@ class ProbBidClearing:
         TOD = ts.strftime('%H:%M')
         # extract demand value 
         d = demand.loc[TOD]
+        
+        # extract mean from attitude 
+        mean = self.attitudes[attitude]
+
+        # Calculate delta in bid from RTP
+        x = rtp - bid
+        
+        # Compute the PDF, which will act as a threshold for bid acceptance 
+        th = norm.pdf(x, loc=mean, scale=self.std_fit)
+
+        # Draw sample value from uniform distribution ranging over possible pdf values
+        s = np.random.uniform(0,self.max_pdf_fit,1)
+
+        # If the sample is below the threshold, then the bid is accepted 
+        if s[0] < th: 
+            # Determine if charge or discharging 
+            if d > 0 and SOC != 0:
+                # Accepted bid, demand > 0 and battery is not empty, discharge
+                return 1
+            elif d < 0 and SOC != 1:
+                # Accepted bid, demand < 0 and battery is not full, charge
+                return -1
+            else:
+                # Our bid was accepted but physical constraints prevent action 
+                return 0
+        else: 
+            # Bid was not accepted
+            return 0
+
+
+
+def meanshift_norm_prob_clear(self, rtp, bid, attitude, SOC, ts):
+        """
+        Calculates the probability of a bid being cleared in the electricity market. 
+        Based on the training attitude and deviation from real time price (RTP)
+    
+        :param rtp: current price of electricity ($/MW)
+        :param bid: bid submitted to the electricity market ($/MW)
+        :param attitude: strategy type employed by the bidder
+            'honest': pdf centered around zero deviation from the RTP
+            'risky': pdf centered around +std deviation from the RTP (bid high prices)
+            'conservative': pdf centered around -std deviation from the RTP (bid low prices)
+        :param SOC: current battery state of charge 
+        :param ts: extract TOD from ts for time-varying bid acceptance prob based on known demand patterns
+        :param demand: average smoothed daily regional demand profile
+        :return: [-1, 0, 1] representing if the bid is accepted to charge, hold, or discharge
+        """
+        demand = self.avg_profile_rolling
+        min_val = min(demand)
+        max_val = max(demand)
+        # center normalize demand around 1 from [0.5, 1.5]
+        demand_norm = (demand - min_val)/(max_val - min_val) + 0.5
+
+        # extract time of day from ts
+        TOD = ts.strftime('%H:%M')
+        # extract demand value 
+        d = demand.loc[TOD]
         d_norm = demand_norm.loc[TOD]
         scale = 3
         
@@ -286,9 +343,5 @@ class ProbBidClearing:
         else: 
             # Bid was not accepted
             return 0
-
-
-
-
 
         
