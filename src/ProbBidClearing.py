@@ -472,8 +472,28 @@ class ProbBidClearing:
             color="C0",
         )
 
+        # fill ax1 with green when demand > 0 and red when demand < 0
+        ax1.fill_between(
+            idx,
+            demand_norm.values,
+            0,
+            where=(demand_norm.values > 0),
+            color="green",
+            alpha=0.3,
+            label="Discharge"
+        )
+        ax1.fill_between(
+            idx,
+            demand_norm.values,
+            0,
+            where=(demand_norm.values < 0),
+            color="red",
+            alpha=0.3,
+            label="Charge"
+        )
         ax1.set_xlim("00:00", "23:45")
         ax1.grid(True)
+        ax1.legend()
 
         # Add the main plot
         ax2 = fig.add_subplot(gs[1, 0])  # Second row, first column
