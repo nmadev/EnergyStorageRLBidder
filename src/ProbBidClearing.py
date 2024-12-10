@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 pd.options.mode.chained_assignment = None  
 
 class ProbBidClearing:
@@ -14,6 +15,7 @@ class ProbBidClearing:
         std = 10, 
         risky_mean = 15, 
         conservative_mean = -15,
+        alpha = 7,
         window = 10
     ):
         """
@@ -23,6 +25,7 @@ class ProbBidClearing:
         :param honest_mean: Mean for the honest bidder (kept constant at 0)
         :param risky_mean: Mean for the risky bidder 
         :param conservative_mean: Mean for the conservative bidder 
+        :param alpha: Mean-shifting factor for bidding 
         :param win: Window size used to compute the roller average demand profile
         """
         
@@ -36,6 +39,14 @@ class ProbBidClearing:
             "risky": risky_mean,
             "conservative": conservative_mean
         }
+
+        ## Attitudes and Scales
+        self.attitude_scales = {
+            "honest": 0,
+            "risky": alpha,
+            "conservative": -alpha
+        }
+        self.alpha = alpha
 
         ## Compute Demand Profile
         self.win = window
@@ -158,7 +169,8 @@ class ProbBidClearing:
         plt.grid(True)
         plt.tight_layout()
         plt.show()
-         
+
+
     def avg_demand_profile(self, STORAGE_DF, win):
         """
         Calculates the average and smoothed daily demand profile based on moving-average window
@@ -225,6 +237,7 @@ class ProbBidClearing:
     def get_demand_profile(self):
         return self.avg_profile_rolling 
     
+
     def timevarying_norm_prob_clear(self, rtp, bid, attitude, SOC, ts):
         """
         Calculates the probability of a bid being cleared in the electricity market. 
@@ -241,18 +254,16 @@ class ProbBidClearing:
         :param demand: average smoothed daily regional demand profile
         :return: [-1, 0, 1] representing if the bid is accepted to charge, hold, or discharge
         """
+        # Get demand profile 
         demand = self.avg_profile_rolling
-        min_val = min(demand)
-        max_val = max(demand)
-        # center normalize demand around 1 from [0.5, 1.5]
-        demand_norm = (demand - min_val)/(max_val - min_val) + 0.5
 
-        # extract time of day from ts
+        # Extract time of day from ts
         TOD = ts.strftime('%H:%M')
-        # extract demand value 
+        
+        # Extract demand value 
         d = demand.loc[TOD]
         
-        # extract mean from attitude 
+        # Extract mean from attitude 
         mean = self.attitudes[attitude]
 
         # Calculate delta in bid from RTP
@@ -281,67 +292,126 @@ class ProbBidClearing:
             return 0
 
 
+    def meanshift_norm_prob_clear(self, rtp, bid, attitude, SOC, ts):
+            """
+            Calculates the probability of a bid being cleared in the electricity market. 
+            Shifts mean based on demand patterns and pre-set attitude
+        
+            :param rtp: current price of electricity ($/MW)
+            :param bid: bid submitted to the electricity market ($/MW)
+            :param attitude: strategy type employed by the bidder
+                'honest': pdf centered around zero deviation from the RTP
+                'risky': pdf centered around +std deviation from the RTP (bid high prices)
+                'conservative': pdf centered around -std deviation from the RTP (bid low prices)
+            :param SOC: current battery state of charge 
+            :param ts: extract TOD from ts for time-varying bid acceptance prob based on known demand patterns
+            :param demand: average smoothed daily regional demand profile
+            :return: [-1, 0, 1] representing if the bid is accepted to charge, hold, or discharge
+            """
 
-def meanshift_norm_prob_clear(self, rtp, bid, attitude, SOC, ts):
-        """
-        Calculates the probability of a bid being cleared in the electricity market. 
-        Based on the training attitude and deviation from real time price (RTP)
-    
-        :param rtp: current price of electricity ($/MW)
-        :param bid: bid submitted to the electricity market ($/MW)
-        :param attitude: strategy type employed by the bidder
-            'honest': pdf centered around zero deviation from the RTP
-            'risky': pdf centered around +std deviation from the RTP (bid high prices)
-            'conservative': pdf centered around -std deviation from the RTP (bid low prices)
-        :param SOC: current battery state of charge 
-        :param ts: extract TOD from ts for time-varying bid acceptance prob based on known demand patterns
-        :param demand: average smoothed daily regional demand profile
-        :return: [-1, 0, 1] representing if the bid is accepted to charge, hold, or discharge
-        """
+            # Get demand profile 
+            demand = self.avg_profile_rolling
+
+            # Normalize demand profile from [-1, 1]
+            min_val = min(demand)
+            max_val = max(demand)
+            demand_norm = 2*(demand - min_val)/(max_val - min_val) - 1
+
+            # Extract time of day from ts
+            TOD = ts.strftime('%H:%M')
+            
+            # Extract demand value 
+            d = demand.loc[TOD]
+            d_norm = demand_norm.loc[TOD]
+
+            # Extract scaling factor from attitude
+            scale = self.attitude_scales[attitude]
+            
+            # Extract mean from attitude and demand pattern 
+            mean = scale*d_norm
+
+            # Calculate delta in bid from RTP
+            x = rtp - bid
+            
+            # Compute the PDF, which will act as a threshold for bid acceptance 
+            th = norm.pdf(x, loc=mean, scale=self.std_fit)
+
+            # Draw sample value from uniform distribution ranging over possible pdf values
+            s = np.random.uniform(0,self.max_pdf_fit,1)
+
+            # If the sample is below the threshold, then the bid is accepted 
+            if s[0] < th: 
+                # Determine if charge or discharging 
+                if d > 0 and SOC != 0:
+                    # Accepted bid, demand > 0 and battery is not empty, discharge
+                    return 1
+                elif d < 0 and SOC != 1:
+                    # Accepted bid, demand < 0 and battery is not full, charge
+                    return -1
+                else:
+                    # Our bid was accepted but physical constraints prevent action 
+                    return 0
+            else: 
+                # Bid was not accepted
+                return 0
+
+        
+    def visualize_meanshift(self):
+        # Get demand profile
         demand = self.avg_profile_rolling
+
+        # Normalize demand profile 
         min_val = min(demand)
         max_val = max(demand)
-        # center normalize demand around 1 from [0.5, 1.5]
-        demand_norm = (demand - min_val)/(max_val - min_val) + 0.5
+        demand_norm = 2*(demand - min_val)/(max_val - min_val) - 1
 
-        # extract time of day from ts
-        TOD = ts.strftime('%H:%M')
-        # extract demand value 
-        d = demand.loc[TOD]
-        d_norm = demand_norm.loc[TOD]
-        scale = 3
-        
-        # extract mean from attitude and demand pattern 
-        if d < 0: 
-            # charge 
-            mean = scale*(1/d_norm)*(1 + self.attitudes[attitude])
-        else:
-            # discharge
-            mean = scale*d_norm*(1 + self.attitudes[attitude])
+        # Scale factor 
+        alpha = self.alpha
 
-        # Calculate delta in bid from RTP
-        x = rtp - bid
-        
-        # Compute the PDF, which will act as a threshold for bid acceptance 
-        th = norm.pdf(x, loc=mean, scale=self.std_fit)
+        # Mean Shifting
+        cons_means = -alpha*demand_norm
+        risky_means = alpha*demand_norm
+        honest_means = 0
 
-        # Draw sample value from uniform distribution ranging over possible pdf values
-        s = np.random.uniform(0,self.max_pdf_fit,1)
+        # Create a figure
+        fig = plt.figure(figsize=(10, 6))
 
-        # If the sample is below the threshold, then the bid is accepted 
-        if s[0] < th: 
-            # Determine if charge or discharging 
-            if d > 0 and SOC != 0:
-                # Accepted bid, demand > 0 and battery is not empty, discharge
-                return 1
-            elif d < 0 and SOC != 1:
-                # Accepted bid, demand < 0 and battery is not full, charge
-                return -1
-            else:
-                # Our bid was accepted but physical constraints prevent action 
-                return 0
-        else: 
-            # Bid was not accepted
-            return 0
+        # Define the gridspec with height ratios
+        gs = gridspec.GridSpec(2, 1, height_ratios=[2, 1])  # 1:2 height ratio
 
-        
+        # Define tick positions
+        tick_positions = demand_norm.index[::12]  # Select every hour entry for the ticks
+        idx = demand_norm.index
+
+        # Add the demand plot
+        ax1 = fig.add_subplot(gs[0, 0])  # First row
+        ax1.set_title("Average Smoothed Normalized Daily Demand Profile")
+        ax1.plot(idx, demand_norm.values, label = "Demand")  
+        ax1.set_xlabel('Time of Day')
+        ax1.set_ylabel('Demand (MW)')
+        ax1.set_xticks(tick_positions)
+        ax1.set_xticklabels(labels = tick_positions, rotation = 45)
+        ax1.set_xlim("00:00", "23:45")
+        ax1.grid(True)
+
+        # Add the main plot
+        ax2 = fig.add_subplot(gs[1, 0])  # Second row
+        ax2.set_title("Means of Shifted Probability Clearing Functions")
+        ax2.plot(idx, cons_means, label = "Conservative", color='r')  
+        ax2.plot(idx, risky_means, label = "Risky", color='b') 
+        mean_line = plt.axhline(y=honest_means, color='g', label="Honest")
+        ax2.set_xlabel('Time of Day')
+        ax2.set_ylabel('Means')
+        ax2.set_ylim([-10, 10])
+        ax2.set_xticks(tick_positions)
+        ax2.set_xticklabels(labels = tick_positions, rotation = 45)
+        ax2.set_xlim("00:00", "23:45")
+        ax2.grid(True)
+
+        # Add an overall legend to the figure in the outer top-right position
+        fig.legend(loc="upper right", bbox_to_anchor=(1.15, 1), title="Overall Legend")
+
+        plt.tight_layout()  # Adjust spacing
+        plt.show()
+
+
