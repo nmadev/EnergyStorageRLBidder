@@ -124,6 +124,7 @@ class DQNAgent:
         action_index = self.compute_argmaxQ(state)
         action = self.action_space[action_index]
         power_bounds = self._return_bounds()
+        self.bid_hist.append(rtp * action)
         return rtp * action, power_bounds, action_index
 
     def train(self, buffer, gamma, initialsize, batchsize, tau, episodes):
