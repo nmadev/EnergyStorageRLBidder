@@ -14,7 +14,7 @@ class DQNAgent:
     def __init__(
         self,
         lr,
-        prob_clear,
+        cleared_action,
         attitude,
         data,
         initial_soc: float = 0.5,
@@ -26,7 +26,7 @@ class DQNAgent:
         """
         DQN Agent initialization.
         :param lr: Learning rate for optimizer
-        :param prob_clear: Function to calculate bid acceptance probability
+        :param cleared_action: Function to calculate bid acceptance probability
         :param attitude: attitude of the agent
         :param data: Loaded data containing fields rtp, timestamp
         """
@@ -47,7 +47,7 @@ class DQNAgent:
         self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
 
         self.data = data
-        self.prob_clear = prob_clear
+        self.cleared_action = cleared_action
         self.attitude = attitude
         self.capacity = capacity
         self.power_max = power_max
@@ -163,15 +163,15 @@ class DQNAgent:
                 else:
                     bid, power_bounds, action_index = self.bid(self.data.iloc[:i])
 
-                prob_cleared = self.prob_clear(
+                is_cleared = self.cleared_action(
                     rtp, bid, self.attitude, soc, datetime.fromtimestamp(ts)
                 )
 
                 power = 0
-                if prob_cleared == 1:
+                if is_cleared == 1:
                     power = self._return_bounds()[1]
                     rtp = rtp / self.eff
-                elif prob_cleared == -1:
+                elif is_cleared == -1:
                     power = self._return_bounds()[0]
                     rtp = rtp * self.eff
 
