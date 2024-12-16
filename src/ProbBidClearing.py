@@ -439,7 +439,6 @@ class ProbBidClearing:
         interest_index=0,
         save_path=None,
     ):
-        # TODO: Maybe adjust the colors of the vertical lines + dots for visual clarity
         # Create a figure
         fig = plt.figure(figsize=(16, 8))
 
@@ -480,7 +479,7 @@ class ProbBidClearing:
             where=(demand_norm.values > 0),
             color="green",
             alpha=0.3,
-            label="Discharge"
+            label="Discharge",
         )
         ax1.fill_between(
             idx,
@@ -489,7 +488,7 @@ class ProbBidClearing:
             where=(demand_norm.values < 0),
             color="red",
             alpha=0.3,
-            label="Charge"
+            label="Charge",
         )
         ax1.set_xlim("00:00", "23:45")
         ax1.grid(True)
@@ -599,7 +598,7 @@ class ProbBidClearing:
             format="GIF",
             loop=0,
         )
-        del(images)
+        del images
 
     def clear_images(self):
         # clear all images

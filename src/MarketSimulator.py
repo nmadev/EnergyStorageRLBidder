@@ -23,7 +23,7 @@ class MarketSimulator:
         min_lookback: int = 288,
         rtp_col: str = "rtp",
         dap_col: str = "dap",
-        prop_honest: float = 0.8,
+        prop_scale: float = 1.0,
         max_steps: int = -1,
     ):
         """
@@ -33,19 +33,17 @@ class MarketSimulator:
         :param min_lookback: the minimum number of data points to look back on
         :param rtp_col: the name of the column containing the real-time price data
         :param dap_col: the name of the column containing the day-ahead price data
-        :param prop_honest: the proportion of honest bidders in the market
+        :param prop_scale: the maximum demand scaled to the maximum available capacity
+
         """
         # copy data for simulation
         self.sim_data = self.data.copy().reset_index(drop=True).sort_values(by="ts")
 
         # determine storage capacity and power capacities
-        total_storage = sum([bidder.capacity for bidder in bidders])
         total_capacity = sum([bidder.power_max for bidder in bidders])
 
-        # TODO: initialize honest bidders here
-
         self.sim_data["scaled_demand"] = (
-            self.sim_data.normalized_demand * total_capacity
+            self.sim_data.normalized_demand * total_capacity * prop_scale
         )
 
         self.sim_data = self.sim_data.rename(columns={rtp_col: "rtp", dap_col: "dap"})
@@ -135,7 +133,7 @@ class MarketSimulator:
             else:
                 cleared_bids.append((0, 0))
 
-            cleared_demand += cleared_power
+            cleared_demand += power_bound
 
         for i, (bid_bounds, power_bounds, effs, idx) in enumerate(zipped_bids):
             base_bids[idx] = (
@@ -143,6 +141,12 @@ class MarketSimulator:
                 cleared_bids[i][0] * sign * clearing_price * self.granularity,
             )
         self.clearing_prices.append(clearing_price)
+        # if demand > 2:
+        #     print(bid_powers)
+        #     print(self._transform_bid(bid_values, effs)[sign_idx])
+        #     print(base_bids)
+        #     print(demand)
+        #     exit()
 
         # sort back to original order
         return base_bids
